@@ -11,19 +11,31 @@ dotenv.config()
 const app=express();
 const port=5000;
 
+let pool: mysql.Pool;
+
 async function CreateDbTable() {
     try{
-        const connection=await mysql.createConnection({
+        const tempConnection=await mysql.createConnection({
             host:process.env.db_host,
             user:process.env.db_user,
             password:process.env.db_password
         })
     
-        await connection.execute("create database if not exists scraping_database;");
-        await connection.changeUser({database : "scraping_database"});
+        await tempConnection.query("create database if not exists scraping_database;");
+        tempConnection.end()
         console.log("Successfully Connected to scraping database")
 
-        await connection.execute("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);")
+        pool=mysql.createPool({
+            host:process.env.db_host,
+            user:process.env.db_user,
+            password:process.env.db_password,
+            database:"scraping_database",
+            waitForConnections:true,
+            connectionLimit:10,
+            queueLimit:0
+        })
+
+        await pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);")
         console.log("Table is ready")
 
     }
@@ -38,18 +50,9 @@ CreateDbTable();
 
 async function insertScrapedData(url:string,title:string|undefined,bullet_points:(string|undefined)[],price:string|undefined,image_links:(string|undefined)[]){
     try{
-        const connection=await mysql.createConnection({
-            host:process.env.db_host,
-            user:process.env.db_user,
-            password:process.env.db_password,
-            database:"scraping_database"
-        })
-    
-        console.log("Connected Successfully to database")
-
         const query="insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,NOW())";
 
-        await connection.execute(query,[
+        await pool.execute(query,[
             url,
             title,
             JSON.stringify(bullet_points),
@@ -68,16 +71,7 @@ async function insertScrapedData(url:string,title:string|undefined,bullet_points
 
 async function fetchScrapedData(){
     try{
-        const connection=await mysql.createConnection({
-            host:process.env.db_host,
-            user:process.env.db_user,
-            password:process.env.db_password,
-            database:"scraping_database"
-        })
-    
-        console.log("Connected Successfully to database")
-
-        const [rows] = await connection.query("select * from amazon_product_scraping_data");
+        const [rows] = await pool.execute("select * from amazon_product_scraping_data");
         return rows;
     }
     catch(error)
@@ -111,10 +105,10 @@ app.post("/scrape",async (req : Request ,res : Response)=>{
             
             return element.textContent?.trim()
         })
-        console.log("Title Scraped Successfully")
+        console.log("Title Scraped Successfully!")
 
 
-        console.log("scraping price....")
+        console.log("scraping price...")
         const price_symbol:string | undefined= await page.$eval(".a-price-symbol",(element)=>{   
             return element.textContent?.trim()
         })
@@ -129,7 +123,7 @@ app.post("/scrape",async (req : Request ,res : Response)=>{
         })
 
         const price:string | undefined=`${price_symbol}${price_whole}${price_fraction}`
-        console.log("Price scraped Successfully")
+        console.log("Price scraped Successfully!")
 
         console.log("scraping bullet points...")
         const bullet_points:(string | undefined)[]= await page.evaluate(()=>{
@@ -142,7 +136,7 @@ app.post("/scrape",async (req : Request ,res : Response)=>{
                 return text
             })
         })
-        console.log("Bullet Points scraped Successfully")
+        console.log("Bullet Points scraped Successfully!")
 
 
         console.log("scraping images...")
@@ -177,12 +171,21 @@ app.post("/scrape",async (req : Request ,res : Response)=>{
                 .replace(/_UY\d+_/g, '_SL1500_')
             })
         })
-        console.log("Images sraped successfully")
+        console.log("Images scraped successfully!")
 
 
         const scraped_at=new Date().toISOString()
 
         await browser.close()
+
+        if(!title  || title.trim() === "" || !price  || price.trim() === "" || !bullet_points  || bullet_points.length === 0 || !images  || images.length === 0)
+        {
+            res.status(400).json({
+                success:false,
+                error: "Scraping Failed : Some fields Are missing",
+                details:{title,price,bullet_points,images}
+            })
+        }
 
         res.json({url,title,bullet_points,price,images,scraped_at})
         insertScrapedData(url,title,bullet_points,price,images)

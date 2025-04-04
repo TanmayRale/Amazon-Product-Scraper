@@ -21,18 +21,28 @@ const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = 5000;
+let pool;
 function CreateDbTable() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const connection = yield promise_1.default.createConnection({
+            const tempConnection = yield promise_1.default.createConnection({
                 host: process.env.db_host,
                 user: process.env.db_user,
                 password: process.env.db_password
             });
-            yield connection.execute("create database if not exists scraping_database;");
-            yield connection.changeUser({ database: "scraping_database" });
+            yield tempConnection.query("create database if not exists scraping_database;");
+            tempConnection.end();
             console.log("Successfully Connected to scraping database");
-            yield connection.execute("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);");
+            pool = promise_1.default.createPool({
+                host: process.env.db_host,
+                user: process.env.db_user,
+                password: process.env.db_password,
+                database: "scraping_database",
+                waitForConnections: true,
+                connectionLimit: 10,
+                queueLimit: 0
+            });
+            yield pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);");
             console.log("Table is ready");
         }
         catch (error) {
@@ -44,15 +54,8 @@ CreateDbTable();
 function insertScrapedData(url, title, bullet_points, price, image_links) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const connection = yield promise_1.default.createConnection({
-                host: process.env.db_host,
-                user: process.env.db_user,
-                password: process.env.db_password,
-                database: "scraping_database"
-            });
-            console.log("Connected Successfully to database");
             const query = "insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,NOW())";
-            yield connection.execute(query, [
+            yield pool.execute(query, [
                 url,
                 title,
                 JSON.stringify(bullet_points),
@@ -69,14 +72,7 @@ function insertScrapedData(url, title, bullet_points, price, image_links) {
 function fetchScrapedData() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const connection = yield promise_1.default.createConnection({
-                host: process.env.db_host,
-                user: process.env.db_user,
-                password: process.env.db_password,
-                database: "scraping_database"
-            });
-            console.log("Connected Successfully to database");
-            const [rows] = yield connection.query("select * from amazon_product_scraping_data");
+            const [rows] = yield pool.execute("select * from amazon_product_scraping_data");
             return rows;
         }
         catch (error) {
@@ -103,8 +99,8 @@ app.post("/scrape", (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             var _a;
             return (_a = element.textContent) === null || _a === void 0 ? void 0 : _a.trim();
         });
-        console.log("Title Scraped Successfully");
-        console.log("scraping price....");
+        console.log("Title Scraped Successfully!");
+        console.log("scraping price...");
         const price_symbol = yield page.$eval(".a-price-symbol", (element) => {
             var _a;
             return (_a = element.textContent) === null || _a === void 0 ? void 0 : _a.trim();
@@ -118,7 +114,7 @@ app.post("/scrape", (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             return ((_a = element.textContent) === null || _a === void 0 ? void 0 : _a.trim()) || '';
         });
         const price = `${price_symbol}${price_whole}${price_fraction}`;
-        console.log("Price scraped Successfully");
+        console.log("Price scraped Successfully!");
         console.log("scraping bullet points...");
         const bullet_points = yield page.evaluate(() => {
             return Array.from(document.querySelectorAll(".a-unordered-list .a-spacing-mini .a-list-item"))
@@ -130,7 +126,7 @@ app.post("/scrape", (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 return text;
             });
         });
-        console.log("Bullet Points scraped Successfully");
+        console.log("Bullet Points scraped Successfully!");
         console.log("scraping images...");
         const images = yield page.evaluate(() => {
             return Array.from(document.querySelectorAll("#altImages img"))
@@ -156,9 +152,16 @@ app.post("/scrape", (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 return src === null || src === void 0 ? void 0 : src.replace(/_SS40_/g, '_SL1500_').replace(/_SS100_/g, '_SL1500_').replace(/_AC_US40_/g, '_AC_SL1500_').replace(/_SX\d+_/g, '_SL1500_').replace(/_SY\d+_/g, '_SL1500_').replace(/_UX\d+_/g, '_SL1500_').replace(/_UY\d+_/g, '_SL1500_');
             });
         });
-        console.log("Images sraped successfully");
+        console.log("Images scraped successfully!");
         const scraped_at = new Date().toISOString();
         yield browser.close();
+        if (!title || title.trim() === "" || !price || price.trim() === "" || !bullet_points || bullet_points.length === 0 || !images || images.length === 0) {
+            res.status(400).json({
+                success: false,
+                error: "Scraping Failed : Some fields Are missing",
+                details: { title, price, bullet_points, images }
+            });
+        }
         res.json({ url, title, bullet_points, price, images, scraped_at });
         insertScrapedData(url, title, bullet_points, price, images);
     }
