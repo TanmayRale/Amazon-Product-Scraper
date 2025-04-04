@@ -35,7 +35,7 @@ async function CreateDbTable() {
             queueLimit:0
         })
 
-        await pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);")
+        await pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at varchar(50) not null);")
         console.log("Table is ready")
 
     }
@@ -48,16 +48,17 @@ async function CreateDbTable() {
 
 CreateDbTable();
 
-async function insertScrapedData(url:string,title:string|undefined,bullet_points:(string|undefined)[],price:string|undefined,image_links:(string|undefined)[]){
+async function insertScrapedData(url:string,title:string|undefined,bullet_points:(string|undefined)[],price:string|undefined,image_links:(string|undefined)[],scraped_at:string){
     try{
-        const query="insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,NOW())";
+        const query="insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,?)";
 
         await pool.execute(query,[
             url,
             title,
             JSON.stringify(bullet_points),
             price,
-            JSON.stringify(image_links)
+            JSON.stringify(image_links),
+            scraped_at
         ])
 
         console.log("Scraped data inserted successfully")
@@ -73,7 +74,7 @@ async function fetchScrapedData(){
     try{
         console.log("Fetching the stored data.")
         const [rows] = await pool.execute("select * from amazon_product_scraping_data");
-        console.log("Syccessfully fetched stored data.")
+        console.log("Successfully fetched stored data.")
         return rows;
     }
     catch(error)
@@ -190,7 +191,7 @@ app.post("/scrape",async (req : Request ,res : Response)=>{
         }
 
         res.json({url,title,bullet_points,price,images,scraped_at})
-        insertScrapedData(url,title,bullet_points,price,images)
+        insertScrapedData(url,title,bullet_points,price,images,scraped_at)
 
     }
     catch(error)

@@ -42,7 +42,7 @@ function CreateDbTable() {
                 connectionLimit: 10,
                 queueLimit: 0
             });
-            yield pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at timestamp default current_timestamp);");
+            yield pool.query("create table if not exists amazon_product_scraping_data (id int auto_increment primary key, url text not null, title varchar(200) not null, bullet_points json not null, price varchar(100) not null, image_links json not null, scraped_at varchar(50) not null);");
             console.log("Table is ready");
         }
         catch (error) {
@@ -51,16 +51,17 @@ function CreateDbTable() {
     });
 }
 CreateDbTable();
-function insertScrapedData(url, title, bullet_points, price, image_links) {
+function insertScrapedData(url, title, bullet_points, price, image_links, scraped_at) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const query = "insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,NOW())";
+            const query = "insert into amazon_product_scraping_data (url,title,bullet_points,price,image_links,scraped_at) values(?,?,?,?,?,?)";
             yield pool.execute(query, [
                 url,
                 title,
                 JSON.stringify(bullet_points),
                 price,
-                JSON.stringify(image_links)
+                JSON.stringify(image_links),
+                scraped_at
             ]);
             console.log("Scraped data inserted successfully");
         }
@@ -74,7 +75,7 @@ function fetchScrapedData() {
         try {
             console.log("Fetching the stored data.");
             const [rows] = yield pool.execute("select * from amazon_product_scraping_data");
-            console.log("Syccessfully fetched stored data.");
+            console.log("Successfully fetched stored data.");
             return rows;
         }
         catch (error) {
@@ -165,7 +166,7 @@ app.post("/scrape", (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             });
         }
         res.json({ url, title, bullet_points, price, images, scraped_at });
-        insertScrapedData(url, title, bullet_points, price, images);
+        insertScrapedData(url, title, bullet_points, price, images, scraped_at);
     }
     catch (error) {
         console.log("Scraping Error :( :- ", error);
