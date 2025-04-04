@@ -72,7 +72,9 @@ function insertScrapedData(url, title, bullet_points, price, image_links) {
 function fetchScrapedData() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
+            console.log("Fetching the stored data.");
             const [rows] = yield pool.execute("select * from amazon_product_scraping_data");
+            console.log("Syccessfully fetched stored data.");
             return rows;
         }
         catch (error) {

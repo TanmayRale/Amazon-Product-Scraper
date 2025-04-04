@@ -71,7 +71,9 @@ async function insertScrapedData(url:string,title:string|undefined,bullet_points
 
 async function fetchScrapedData(){
     try{
+        console.log("Fetching the stored data.")
         const [rows] = await pool.execute("select * from amazon_product_scraping_data");
+        console.log("Syccessfully fetched stored data.")
         return rows;
     }
     catch(error)
