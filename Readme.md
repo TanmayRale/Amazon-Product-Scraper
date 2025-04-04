@@ -5,6 +5,6 @@ This project is a web scraping API built with **TypeScript**, **Puppeteer**, and
 # Setup Instructions
 
 1. Install dependencies using "npm install"
-2. Set the .env DB_HOST=localhost DB_USER=root DB_PASSWORD=your_mysql_password
+2. Set the .env db_host=localhost db_user=root db_password=your_mysql_password
 3. Build the typescript using "npm run build"
 4. Start the server using "npm run start"
